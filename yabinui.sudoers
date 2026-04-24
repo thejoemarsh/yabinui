@@ -1,0 +1,6 @@
+yabin ALL=(root) NOPASSWD: /usr/bin/openvpn --config /etc/openvpn/client/drivelinevpn.conf --daemon
+yabin ALL=(root) NOPASSWD: /usr/bin/killall openvpn
+yabin ALL=(root) NOPASSWD: /usr/bin/mount -t cifs //*.drivelinebaseball.com/* /home/yabin/* -o credentials=/home/yabin/.smbcreds\,uid=1000\,gid=1000
+yabin ALL=(root) NOPASSWD: /usr/bin/umount /home/yabin/*
+yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick up *
+yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick down *
