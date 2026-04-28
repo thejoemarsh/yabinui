@@ -40,7 +40,9 @@ double-spaced ghost the user sees.
 
 ## Fix
 
-Two small changes in `internal/tui/`:
+Three changes, applied in two passes.
+
+Pass 1 — `internal/tui/`:
 
 - `view.go` — `View()` returns `""` while `m.width == 0`. No frame is committed
   until the renderer knows the real terminal geometry.
@@ -50,6 +52,26 @@ Two small changes in `internal/tui/`:
 
 The "first" detection in `update.go` keys off `m.width == 0` — the initial
 zero-value of the field — so it costs no extra state.
+
+Pass 2 — `internal/vpn/openvpn.go`:
+
+The pass-1 fixes weren't enough on their own. An audit of every subprocess
+fired during launch turned up that `vpn.CheckStatus` (called from `Init` via
+`checkStatusCmd`) used `exec.Cmd.Output()`, which captures stdout but leaves
+**stderr inherited from the parent TTY**. The program runs in alt-screen, so
+the parent TTY *is* the alt-screen buffer. Anything `pgrep` (or its lookup
+path, or sudo, or a libc warning) wrote to stderr landed directly in the
+alt-screen at the cursor's current position, behind Bubble Tea's back. The
+next `View()` then reconciled against a screen Bubble Tea didn't fully model,
+producing the double-spaced ghost.
+
+Fixed by:
+- `CheckStatus`: set `cmd.Stderr = io.Discard` before `Output()`.
+- `Connect` / `Disconnect`: replace `cmd.Run()` (inherits stdout+stderr) with
+  `cmd.CombinedOutput()`, surfacing failure as a wrapped error.
+
+The same pattern was already correct in `netshare.go` and `wireguard.go`, which
+both use `CombinedOutput`. `vpn` was the outlier.
 
 ## Why we ruled out alternatives
 
@@ -76,6 +98,12 @@ render path is committing output before `m.width` is set — a regression of the
 `View()` guard would re-open exactly this bug. After that, look at whether
 new commands have been added to `Init()` that could widen the startup
 re-render storm.
+
+Also re-audit any new `os/exec` callsites for stderr leaks. The rule of thumb:
+in an alt-screen TUI, every `exec.Cmd` must explicitly handle **both** stdout
+and stderr (`CombinedOutput`, or assign `cmd.Stdout` and `cmd.Stderr` to
+`io.Discard` / a buffer). `cmd.Output()` alone is insufficient — stderr is
+still inherited from the TTY. `cmd.Run()` is worse — both streams inherited.
 
 ## Terminal-emulator caveat
 
