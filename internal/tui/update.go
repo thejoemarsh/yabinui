@@ -55,7 +55,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = StateConnected
-		return m, nil
+		return m, refreshHostInfoCmd()
 
 	case disconnectedMsg:
 		if msg.err != nil {
@@ -64,6 +64,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = StateDisconnected
+		return m, refreshHostInfoCmd()
+
+	case hostInfoRefreshedMsg:
+		m.host = msg.host
 		return m, nil
 
 	case NetshareCheckedMsg:
@@ -133,7 +137,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.wgEntries[msg.idx].State = WGUp
 		m.wgEntries[msg.idx].ErrMsg = ""
-		return m, nil
+		return m, refreshHostInfoCmd()
 
 	case wgDownMsg:
 		if msg.idx < 0 || msg.idx >= len(m.wgEntries) {
@@ -146,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.wgEntries[msg.idx].State = WGDown
 		m.wgEntries[msg.idx].ErrMsg = ""
-		return m, nil
+		return m, refreshHostInfoCmd()
 
 	case netshareUnmountedMsg:
 		if msg.idx < 0 || msg.idx >= len(m.netshares) {

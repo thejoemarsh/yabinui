@@ -170,6 +170,10 @@ type wgDownMsg struct {
 	err error
 }
 
+type hostInfoRefreshedMsg struct {
+	host HostInfo
+}
+
 // DrivelineSpinner is a custom spinner with smooth animation
 var DrivelineSpinner = spinner.Spinner{
 	Frames: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
@@ -315,5 +319,11 @@ func wgDownCmd(idx int, name string) tea.Cmd {
 	return func() tea.Msg {
 		err := wireguard.Down(name)
 		return wgDownMsg{idx: idx, err: err}
+	}
+}
+
+func refreshHostInfoCmd() tea.Cmd {
+	return func() tea.Msg {
+		return hostInfoRefreshedMsg{host: LoadHostInfo()}
 	}
 }

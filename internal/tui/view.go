@@ -36,7 +36,12 @@ func (m Model) renderHeader(width int) string {
 	pill := m.renderStatusPill()
 	statusLine := headerLabelStyle.Render("Status: ") + pill + m.renderStatusHint()
 	userLine := headerTextStyle.Render(m.host.Username + "@" + m.host.Hostname)
-	midContent := lipgloss.JoinVertical(lipgloss.Left, "", statusLine, userLine)
+	midRows := []string{"", statusLine}
+	if other := m.renderOtherVPNs(); other != "" {
+		midRows = append(midRows, other)
+	}
+	midRows = append(midRows, userLine)
+	midContent := lipgloss.JoinVertical(lipgloss.Left, midRows...)
 
 	// Right column: app version.
 	rightContent := headerLabelStyle.Render("yabinui:  ") + headerTextStyle.Render(AppVersion)
@@ -76,6 +81,23 @@ func (m Model) renderStatusHint() string {
 		return ""
 	}
 	return headerMutedStyle.Render(hint)
+}
+
+// renderOtherVPNs returns a header line listing non-Driveline VPNs that are
+// currently up, or "" when none are. Keeps the header unchanged in the common
+// case where only Driveline (or nothing) is active.
+func (m Model) renderOtherVPNs() string {
+	dot := lipgloss.NewStyle().Foreground(Success).Render("●")
+	var parts []string
+	for _, e := range m.wgEntries {
+		if e.State == WGUp {
+			parts = append(parts, dot+" "+headerTextStyle.Render(e.Name)+" "+headerMutedStyle.Render("(wg)"))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return headerLabelStyle.Render("Other:  ") + strings.Join(parts, "  ")
 }
 
 func (m Model) renderStatusPill() string {
