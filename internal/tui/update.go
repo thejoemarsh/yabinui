@@ -19,8 +19,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
+		first := m.width == 0
 		m.width = msg.Width
 		m.height = msg.Height
+		if first {
+			return m, tea.ClearScreen
+		}
 		return m, nil
 
 	case tea.KeyMsg:

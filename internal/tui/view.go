@@ -8,6 +8,13 @@ import (
 
 // View renders the UI based on the current state.
 func (m Model) View() string {
+	// Skip the first paint until WindowSizeMsg arrives. Rendering at an
+	// unknown geometry causes Bubble Tea's renderer to reconcile against the
+	// real terminal on the next frame, which can bleed the prior frame down
+	// into the rows below the live view (see docs/sidebar-duplication-bug.md).
+	if m.width == 0 {
+		return ""
+	}
 	width := m.width
 	if width < 80 {
 		width = 80
