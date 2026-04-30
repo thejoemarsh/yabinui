@@ -75,6 +75,26 @@ var (
 	tabArrowStyle = lipgloss.NewStyle().
 			Foreground(Primary)
 
+	// Dim variants used when the sidebar is not focused (i.e. the user is
+	// inside a section). Keeps the selection visible but signals that input
+	// goes elsewhere.
+	tabSelectedDimStyle = lipgloss.NewStyle().
+				Background(Muted).
+				Foreground(OnAccent).
+				Width(SidebarWidth)
+
+	tabNameDimStyle = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	tabArrowDimStyle = lipgloss.NewStyle().
+				Foreground(Muted)
+
+	// Row highlight for the selected row inside a content section.
+	rowSelectedStyle = lipgloss.NewStyle().
+				Background(Primary).
+				Foreground(OnAccent).
+				Bold(true)
+
 	// Content
 	contentStyle = lipgloss.NewStyle().
 			PaddingLeft(2)

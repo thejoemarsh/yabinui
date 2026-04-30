@@ -24,7 +24,7 @@ func (m Model) View() string {
 	body := m.renderBody(width)
 	footer := m.renderFooter(width)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, "", "", body, footer)
 }
 
 // renderHeader: logo on left, status block in middle, versions on right.
@@ -65,7 +65,7 @@ func (m Model) renderHeader(width int) string {
 	leftPadded := lipgloss.NewStyle().PaddingLeft(1).Render(logoBlock)
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, leftPadded, midBlock, rightAligned)
-	return row + "\n"
+	return row
 }
 
 func (m Model) renderStatusHint() string {
@@ -126,16 +126,17 @@ func (m Model) renderBody(width int) string {
 }
 
 func (m Model) renderSidebar() string {
+	dim := m.focus == FocusContent
 	var rows []string
 	for i, name := range TabNames {
-		rows = append(rows, renderTabRow(name, "", Tab(i) == m.selectedTab))
+		rows = append(rows, renderTabRow(name, "", Tab(i) == m.selectedTab, dim))
 	}
 	return lipgloss.NewStyle().PaddingLeft(1).Render(
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
 	)
 }
 
-func renderTabRow(name, subtitle string, selected bool) string {
+func renderTabRow(name, subtitle string, selected, dim bool) string {
 	// Full inner layout: " name  [subtitle]  > "
 	arrow := "> "
 	right := arrow
@@ -152,15 +153,24 @@ func renderTabRow(name, subtitle string, selected bool) string {
 
 	if selected {
 		full := " " + name + spacer + right + " "
+		if dim {
+			return tabSelectedDimStyle.Render(full)
+		}
 		return tabSelectedStyle.Render(full)
 	}
 
-	namePart := tabNameStyle.Render(name)
+	nameStyle := tabNameStyle
+	arrowStyle := tabArrowStyle
+	if dim {
+		nameStyle = tabNameDimStyle
+		arrowStyle = tabArrowDimStyle
+	}
+	namePart := nameStyle.Render(name)
 	var subPart string
 	if subtitle != "" {
 		subPart = tabSubStyle.Render(subtitle) + "  "
 	}
-	arrowPart := tabArrowStyle.Render(arrow)
+	arrowPart := arrowStyle.Render(arrow)
 	return tabRowStyle.Render(" " + namePart + spacer + subPart + arrowPart + " ")
 }
 
@@ -173,11 +183,11 @@ func (m Model) renderTabContent(width int) string {
 	case TabThisDevice:
 		body = m.renderThisDevice()
 	case TabNetshares:
-		body = m.renderNetshares()
+		body = m.renderNetshares(width - 2)
 	case TabSSH:
-		body = m.renderSSH()
+		body = m.renderSSH(width - 2)
 	case TabVPN:
-		body = m.renderVPN()
+		body = m.renderVPN(width - 2)
 	}
 	return contentStyle.Width(width).Render(body)
 }
@@ -203,7 +213,7 @@ func (m Model) renderThisDevice() string {
 	return b.String()
 }
 
-func (m Model) renderNetshares() string {
+func (m Model) renderNetshares(rowWidth int) string {
 	var b strings.Builder
 	b.WriteString(sectionTitleStyle.Render("Shares"))
 	b.WriteString("\n\n")
@@ -224,7 +234,7 @@ func (m Model) renderNetshares() string {
 	}
 
 	for i, e := range m.netshares {
-		b.WriteString(m.renderNetshareRow(i, e))
+		b.WriteString(m.renderNetshareRow(i, e, rowWidth))
 		b.WriteString("\n")
 	}
 
@@ -237,38 +247,43 @@ func (m Model) renderNetshares() string {
 	return b.String()
 }
 
-func (m Model) renderNetshareRow(idx int, e NetshareEntry) string {
-	cursor := "  "
-	if m.focus == FocusContent && m.selectedTab == TabNetshares && idx == m.selectedNetshare {
-		cursor = tabArrowStyle.Render("> ")
-	}
+func (m Model) renderNetshareRow(idx int, e NetshareEntry, rowWidth int) string {
+	selected := m.focus == FocusContent && m.selectedTab == TabNetshares && idx == m.selectedNetshare
 
-	var dot, label string
+	var dotGlyph, labelText string
+	var dotColor lipgloss.Color
+	var labelStyle lipgloss.Style
 	switch e.State {
 	case NSMounted:
-		dot = lipgloss.NewStyle().Foreground(Success).Render("●")
-		label = sectionValueStyle.Render("Connected")
+		dotGlyph, dotColor = "●", Success
+		labelText, labelStyle = "Connected", sectionValueStyle
 	case NSUnmounted:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render("○")
-		label = headerMutedStyle.Render("Not connected")
+		dotGlyph, dotColor = "○", Muted
+		labelText, labelStyle = "Not connected", headerMutedStyle
 	case NSMounting:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Connecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Connecting...", connectingStyle
 	case NSUnmounting:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Disconnecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Disconnecting...", connectingStyle
 	case NSChecking:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render(m.spinner.View())
-		label = headerMutedStyle.Render("Checking...")
+		dotGlyph, dotColor = m.spinner.View(), Muted
+		labelText, labelStyle = "Checking...", headerMutedStyle
 	case NSError:
-		dot = lipgloss.NewStyle().Foreground(Error).Render("✗")
-		label = errorStyle.Render("Error")
+		dotGlyph, dotColor = "✗", Error
+		labelText, labelStyle = "Error", errorStyle
 	}
 
-	name := sectionValueStyle.Render(e.Def.Name)
-	// Align: cursor + name (padded) + dot + label
-	namePadded := padRight(name, 18)
-	row := cursor + namePadded + dot + "  " + label
+	namePadded := padRight(e.Def.Name, 18)
+	plain := "  " + namePadded + dotGlyph + "  " + labelText
+	var row string
+	if selected {
+		row = rowSelectedStyle.Width(rowWidth).Render(plain)
+	} else {
+		row = "  " + padRight(sectionValueStyle.Render(e.Def.Name), 18) +
+			lipgloss.NewStyle().Foreground(dotColor).Render(dotGlyph) +
+			"  " + labelStyle.Render(labelText)
+	}
 
 	if e.State == NSError && e.ErrMsg != "" {
 		row += "\n    " + headerMutedStyle.Render(trimErr(e.ErrMsg))
@@ -293,18 +308,18 @@ func trimErr(s string) string {
 	return s
 }
 
-func (m Model) renderVPN() string {
+func (m Model) renderVPN(rowWidth int) string {
 	var b strings.Builder
 	b.WriteString(sectionTitleStyle.Render("Connections"))
 	b.WriteString("\n\n")
 
 	// Row 0: OpenVPN, state derived from m.state.
-	b.WriteString(m.renderOpenVPNRow(0))
+	b.WriteString(m.renderOpenVPNRow(0, rowWidth))
 	b.WriteString("\n")
 
 	// Rows 1..N: WireGuard tunnels.
 	for i, e := range m.wgEntries {
-		b.WriteString(m.renderWGRow(i+1, e))
+		b.WriteString(m.renderWGRow(i+1, e, rowWidth))
 		b.WriteString("\n")
 	}
 
@@ -317,79 +332,89 @@ func (m Model) renderVPN() string {
 	return b.String()
 }
 
-func (m Model) renderOpenVPNRow(rowIdx int) string {
-	cursor := "  "
-	if m.focus == FocusContent && m.selectedTab == TabVPN && rowIdx == m.selectedVPN {
-		cursor = tabArrowStyle.Render("> ")
-	}
+func (m Model) renderOpenVPNRow(rowIdx, rowWidth int) string {
+	selected := m.focus == FocusContent && m.selectedTab == TabVPN && rowIdx == m.selectedVPN
 
-	var dot, label string
+	var dotGlyph, labelText string
+	var dotColor lipgloss.Color
+	var labelStyle lipgloss.Style
 	switch m.state {
 	case StateConnected:
-		dot = lipgloss.NewStyle().Foreground(Success).Render("●")
-		label = sectionValueStyle.Render("Connected")
+		dotGlyph, dotColor = "●", Success
+		labelText, labelStyle = "Connected", sectionValueStyle
 	case StateDisconnected:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render("○")
-		label = headerMutedStyle.Render("Not connected")
+		dotGlyph, dotColor = "○", Muted
+		labelText, labelStyle = "Not connected", headerMutedStyle
 	case StateConnecting:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Connecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Connecting...", connectingStyle
 	case StateDisconnecting:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Disconnecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Disconnecting...", connectingStyle
 	case StateChecking:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render(m.spinner.View())
-		label = headerMutedStyle.Render("Checking...")
+		dotGlyph, dotColor = m.spinner.View(), Muted
+		labelText, labelStyle = "Checking...", headerMutedStyle
 	case StateError:
-		dot = lipgloss.NewStyle().Foreground(Error).Render("✗")
-		label = errorStyle.Render("Error")
+		dotGlyph, dotColor = "✗", Error
+		labelText, labelStyle = "Error", errorStyle
 	}
 
-	name := sectionValueStyle.Render("drivelinevpn")
-	kind := headerMutedStyle.Render("(openvpn)")
-	namePadded := padRight(name, 18)
-	return cursor + namePadded + dot + "  " + label + "  " + kind
+	namePadded := padRight("drivelinevpn", 18)
+	if selected {
+		plain := "  " + namePadded + dotGlyph + "  " + labelText + "  (openvpn)"
+		return rowSelectedStyle.Width(rowWidth).Render(plain)
+	}
+	return "  " + padRight(sectionValueStyle.Render("drivelinevpn"), 18) +
+		lipgloss.NewStyle().Foreground(dotColor).Render(dotGlyph) +
+		"  " + labelStyle.Render(labelText) +
+		"  " + headerMutedStyle.Render("(openvpn)")
 }
 
-func (m Model) renderWGRow(rowIdx int, e WGEntry) string {
-	cursor := "  "
-	if m.focus == FocusContent && m.selectedTab == TabVPN && rowIdx == m.selectedVPN {
-		cursor = tabArrowStyle.Render("> ")
-	}
+func (m Model) renderWGRow(rowIdx int, e WGEntry, rowWidth int) string {
+	selected := m.focus == FocusContent && m.selectedTab == TabVPN && rowIdx == m.selectedVPN
 
-	var dot, label string
+	var dotGlyph, labelText string
+	var dotColor lipgloss.Color
+	var labelStyle lipgloss.Style
 	switch e.State {
 	case WGUp:
-		dot = lipgloss.NewStyle().Foreground(Success).Render("●")
-		label = sectionValueStyle.Render("Connected")
+		dotGlyph, dotColor = "●", Success
+		labelText, labelStyle = "Connected", sectionValueStyle
 	case WGDown:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render("○")
-		label = headerMutedStyle.Render("Not connected")
+		dotGlyph, dotColor = "○", Muted
+		labelText, labelStyle = "Not connected", headerMutedStyle
 	case WGBringingUp:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Connecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Connecting...", connectingStyle
 	case WGBringingDown:
-		dot = lipgloss.NewStyle().Foreground(Primary).Render(m.spinner.View())
-		label = connectingStyle.Render("Disconnecting...")
+		dotGlyph, dotColor = m.spinner.View(), Primary
+		labelText, labelStyle = "Disconnecting...", connectingStyle
 	case WGChecking:
-		dot = lipgloss.NewStyle().Foreground(Muted).Render(m.spinner.View())
-		label = headerMutedStyle.Render("Checking...")
+		dotGlyph, dotColor = m.spinner.View(), Muted
+		labelText, labelStyle = "Checking...", headerMutedStyle
 	case WGError:
-		dot = lipgloss.NewStyle().Foreground(Error).Render("✗")
-		label = errorStyle.Render("Error")
+		dotGlyph, dotColor = "✗", Error
+		labelText, labelStyle = "Error", errorStyle
 	}
 
-	name := sectionValueStyle.Render(e.Name)
-	kind := headerMutedStyle.Render("(wireguard)")
-	namePadded := padRight(name, 18)
-	row := cursor + namePadded + dot + "  " + label + "  " + kind
+	namePadded := padRight(e.Name, 18)
+	var row string
+	if selected {
+		plain := "  " + namePadded + dotGlyph + "  " + labelText + "  (wireguard)"
+		row = rowSelectedStyle.Width(rowWidth).Render(plain)
+	} else {
+		row = "  " + padRight(sectionValueStyle.Render(e.Name), 18) +
+			lipgloss.NewStyle().Foreground(dotColor).Render(dotGlyph) +
+			"  " + labelStyle.Render(labelText) +
+			"  " + headerMutedStyle.Render("(wireguard)")
+	}
 	if e.State == WGError && e.ErrMsg != "" {
 		row += "\n    " + headerMutedStyle.Render(trimErr(e.ErrMsg))
 	}
 	return row
 }
 
-func (m Model) renderSSH() string {
+func (m Model) renderSSH(rowWidth int) string {
 	var b strings.Builder
 	b.WriteString(sectionTitleStyle.Render("Sessions"))
 	b.WriteString("\n\n")
@@ -410,7 +435,7 @@ func (m Model) renderSSH() string {
 	}
 
 	for i, e := range m.sshEntries {
-		b.WriteString(m.renderSSHRow(i, e))
+		b.WriteString(m.renderSSHRow(i, e, rowWidth))
 		b.WriteString("\n")
 	}
 
@@ -423,17 +448,17 @@ func (m Model) renderSSH() string {
 	return b.String()
 }
 
-func (m Model) renderSSHRow(idx int, e SSHEntry) string {
-	cursor := "  "
-	if m.focus == FocusContent && m.selectedTab == TabSSH && idx == m.selectedSSH {
-		cursor = tabArrowStyle.Render("> ")
+func (m Model) renderSSHRow(idx int, e SSHEntry, rowWidth int) string {
+	selected := m.focus == FocusContent && m.selectedTab == TabSSH && idx == m.selectedSSH
+
+	var row string
+	if selected {
+		plain := "  " + padRight(e.Def.Name, 22) + e.Def.Command
+		row = rowSelectedStyle.Width(rowWidth).Render(plain)
+	} else {
+		row = "  " + padRight(sectionValueStyle.Render(e.Def.Name), 22) +
+			headerMutedStyle.Render(e.Def.Command)
 	}
-
-	name := sectionValueStyle.Render(e.Def.Name)
-	namePadded := padRight(name, 22)
-	cmd := headerMutedStyle.Render(e.Def.Command)
-
-	row := cursor + namePadded + cmd
 	if e.ErrMsg != "" {
 		row += "\n    " + errorStyle.Render("✗ ") + headerMutedStyle.Render(trimErr(e.ErrMsg))
 	}
