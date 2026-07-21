@@ -269,6 +269,9 @@ func (m Model) renderNetshareRow(idx int, e NetshareEntry, rowWidth int) string 
 	case NSChecking:
 		dotGlyph, dotColor = m.spinner.View(), Muted
 		labelText, labelStyle = "Checking...", headerMutedStyle
+	case NSStale:
+		dotGlyph, dotColor = "◐", Error
+		labelText, labelStyle = "Stale", errorStyle
 	case NSError:
 		dotGlyph, dotColor = "✗", Error
 		labelText, labelStyle = "Error", errorStyle

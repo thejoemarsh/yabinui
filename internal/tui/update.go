@@ -79,9 +79,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.netshares[msg.Idx].ErrMsg = msg.Err.Error()
 			return m, nil
 		}
-		if msg.Mounted {
+		switch {
+		case msg.Mounted && msg.Stale:
+			// Mounted on paper only — don't report it as connected.
+			m.netshares[msg.Idx].State = NSStale
+			m.netshares[msg.Idx].ErrMsg = "server not responding (VPN or network change?) — toggle to reconnect"
+			return m, nil
+		case msg.Mounted:
 			m.netshares[msg.Idx].State = NSMounted
-		} else {
+		default:
 			m.netshares[msg.Idx].State = NSUnmounted
 		}
 		m.netshares[msg.Idx].ErrMsg = ""
@@ -333,6 +339,11 @@ func (m Model) toggleSelectedNetshare() (tea.Model, tea.Cmd) {
 		m.netshares[m.selectedNetshare].State = NSMounting
 		m.netshares[m.selectedNetshare].ErrMsg = ""
 		return m, tea.Batch(m.spinner.Tick, mountNetshareCmd(m.selectedNetshare, e.Def))
+	case NSStale:
+		// The user wants the share working again, not merely detached.
+		m.netshares[m.selectedNetshare].State = NSMounting
+		m.netshares[m.selectedNetshare].ErrMsg = ""
+		return m, tea.Batch(m.spinner.Tick, remountNetshareCmd(m.selectedNetshare, e.Def))
 	case NSError:
 		// After a failure the cached state may not match /proc/mounts, so let
 		// the command decide which direction to go.

@@ -2,5 +2,10 @@ yabin ALL=(root) NOPASSWD: /usr/bin/openvpn --config /etc/openvpn/client/driveli
 yabin ALL=(root) NOPASSWD: /usr/bin/killall openvpn
 yabin ALL=(root) NOPASSWD: /usr/bin/mount -t cifs //*.drivelinebaseball.com/* /home/yabin/* -o credentials=/home/yabin/.smbcreds\,uid=1000\,gid=1000
 yabin ALL=(root) NOPASSWD: /usr/bin/umount /home/yabin/*
+# -f clears a stale mount whose server went away (e.g. after a VPN switch);
+# -l is the last-resort detach. sudo matches argv positionally, so each flag
+# form needs its own rule — "umount /home/yabin/*" does not cover "umount -f ...".
+yabin ALL=(root) NOPASSWD: /usr/bin/umount -f /home/yabin/*
+yabin ALL=(root) NOPASSWD: /usr/bin/umount -l /home/yabin/*
 yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick up *
 yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick down *

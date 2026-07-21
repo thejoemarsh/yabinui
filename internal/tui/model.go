@@ -58,6 +58,9 @@ const (
 	NSMounted
 	NSUnmounting
 	NSError
+	// NSStale means the mountpoint is still in /proc/mounts but the server
+	// stopped answering — typically after switching VPNs.
+	NSStale
 )
 
 // NetshareEntry pairs a share definition with its current state.
@@ -136,6 +139,7 @@ type disconnectedMsg struct {
 type NetshareCheckedMsg struct {
 	Idx     int
 	Mounted bool
+	Stale   bool // in /proc/mounts but the server no longer answers
 	Err     error
 }
 
@@ -276,7 +280,11 @@ func disconnectCmd() tea.Cmd {
 func checkNetshareCmd(idx int, n netshare.Netshare) tea.Cmd {
 	return func() tea.Msg {
 		mounted, err := n.IsMounted()
-		return NetshareCheckedMsg{Idx: idx, Mounted: mounted, Err: err}
+		stale := false
+		if err == nil && mounted {
+			stale = !n.IsHealthy()
+		}
+		return NetshareCheckedMsg{Idx: idx, Mounted: mounted, Stale: stale, Err: err}
 	}
 }
 
@@ -291,6 +299,14 @@ func unmountNetshareCmd(idx int, n netshare.Netshare) tea.Cmd {
 	return func() tea.Msg {
 		err := n.Unmount()
 		return netshareUnmountedMsg{idx: idx, err: err}
+	}
+}
+
+// remountNetshareCmd clears a stale mount and mounts it again. Mount() drops
+// the dead mountpoint itself, so this is a plain reconnect.
+func remountNetshareCmd(idx int, n netshare.Netshare) tea.Cmd {
+	return func() tea.Msg {
+		return netshareMountedMsg{idx: idx, err: n.Mount()}
 	}
 }
 
