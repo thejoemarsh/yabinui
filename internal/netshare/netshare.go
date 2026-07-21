@@ -37,6 +37,12 @@ func (n Netshare) IsMounted() (bool, error) {
 
 // Mount mounts the remote CIFS share at MountPoint.
 func (n Netshare) Mount() error {
+	// Mounting an already-mounted point fails with CIFS "mount error(16):
+	// Device or resource busy". Treat it as a no-op so a stale UI state can
+	// never turn into a spurious error.
+	if mounted, err := n.IsMounted(); err == nil && mounted {
+		return nil
+	}
 	if err := os.MkdirAll(n.MountPoint, 0o755); err != nil {
 		return fmt.Errorf("create mount point: %w", err)
 	}
@@ -58,7 +64,18 @@ func (n Netshare) Unmount() error {
 	cmd := exec.Command("sudo", "umount", n.MountPoint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("umount: %w: %s", err, strings.TrimSpace(string(out)))
+		msg := strings.TrimSpace(string(out))
+		if isBusy(msg) {
+			return fmt.Errorf("umount: %s is in use — close any shell, editor, or file manager sitting in it (fuser -vm %s)", n.MountPoint, n.MountPoint)
+		}
+		return fmt.Errorf("umount: %w: %s", err, msg)
 	}
 	return nil
+}
+
+// isBusy reports whether a mount/umount failure was EBUSY. CIFS surfaces this
+// as "mount error(16)", util-linux as "target is busy".
+func isBusy(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "busy") || strings.Contains(m, "error(16)")
 }

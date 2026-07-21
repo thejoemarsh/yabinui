@@ -329,10 +329,16 @@ func (m Model) toggleSelectedNetshare() (tea.Model, tea.Cmd) {
 	case NSMounted:
 		m.netshares[m.selectedNetshare].State = NSUnmounting
 		return m, tea.Batch(m.spinner.Tick, unmountNetshareCmd(m.selectedNetshare, e.Def))
-	case NSUnmounted, NSError:
+	case NSUnmounted:
 		m.netshares[m.selectedNetshare].State = NSMounting
 		m.netshares[m.selectedNetshare].ErrMsg = ""
 		return m, tea.Batch(m.spinner.Tick, mountNetshareCmd(m.selectedNetshare, e.Def))
+	case NSError:
+		// After a failure the cached state may not match /proc/mounts, so let
+		// the command decide which direction to go.
+		m.netshares[m.selectedNetshare].State = NSChecking
+		m.netshares[m.selectedNetshare].ErrMsg = ""
+		return m, tea.Batch(m.spinner.Tick, resolveNetshareCmd(m.selectedNetshare, e.Def))
 	}
 	return m, nil
 }

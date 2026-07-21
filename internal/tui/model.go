@@ -294,6 +294,23 @@ func unmountNetshareCmd(idx int, n netshare.Netshare) tea.Cmd {
 	}
 }
 
+// resolveNetshareCmd re-reads /proc/mounts and toggles based on what is
+// actually mounted, rather than on a cached (possibly stale) UI state. Used to
+// recover from NSError, where the last action failed and the tracked state and
+// reality may have diverged.
+func resolveNetshareCmd(idx int, n netshare.Netshare) tea.Cmd {
+	return func() tea.Msg {
+		mounted, err := n.IsMounted()
+		if err != nil {
+			return netshareUnmountedMsg{idx: idx, err: err}
+		}
+		if mounted {
+			return netshareUnmountedMsg{idx: idx, err: n.Unmount()}
+		}
+		return netshareMountedMsg{idx: idx, err: n.Mount()}
+	}
+}
+
 func launchSSHCmd(idx int, e ssh.Entry, terminal string) tea.Cmd {
 	return func() tea.Msg {
 		err := e.Launch(terminal)
