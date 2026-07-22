@@ -114,7 +114,7 @@ func (n Netshare) Unmount() error {
 	// If the server still answers, a local process really is holding the
 	// mount, and forcing would risk losing its buffered writes.
 	if n.IsHealthy() {
-		return fmt.Errorf("umount: %s is in use — close any shell, editor, or file manager sitting in it (fuser -vm %s)", n.MountPoint, n.MountPoint)
+		return n.unmountBusy()
 	}
 
 	// Server unreachable: the SMB session is already gone (usually a VPN or
@@ -124,6 +124,37 @@ func (n Netshare) Unmount() error {
 		return fmt.Errorf("umount -f: %w: %s (stale mount; if it persists: sudo umount -l %s)", err, msg, n.MountPoint)
 	}
 	return nil
+}
+
+// unmountBusy handles EBUSY on a live share: the usual culprit is a file
+// manager left sitting in the share, which holds nothing worth preserving, so
+// close those and retry. Anything else — a shell, an editor, a running copy —
+// is reported rather than killed, since terminating it could lose work.
+func (n Netshare) unmountBusy() error {
+	holders := Holders(n.MountPoint)
+	if len(holders) == 0 {
+		// Nothing visible in /proc. A kernel-side reference (a nested mount, or
+		// an NFS/CIFS handle held by a process that just exited) usually clears
+		// on its own, so one plain retry is worth more than a message.
+		if _, err := n.umount(); err == nil {
+			return nil
+		}
+		return fmt.Errorf("umount: %s is busy but no process is holding it — retry in a moment, or force it with: sudo umount -l %s", n.MountPoint, n.MountPoint)
+	}
+
+	stuck := closeHolders(holders)
+	if len(stuck) == 0 {
+		if msg, err := n.umount(); err != nil {
+			return fmt.Errorf("umount: %w: %s (closed %s, but the share is still busy)", err, msg, describe(holders))
+		}
+		return nil
+	}
+	// Some holders closed; the retry may still succeed if the survivors were
+	// only reported and never actually touching the mount by the time we got here.
+	if _, err := n.umount(); err == nil {
+		return nil
+	}
+	return fmt.Errorf("umount: %s is in use — close it manually: %s", n.MountPoint, describe(stuck))
 }
 
 // umount shells out to umount with optional flags, returning trimmed output.

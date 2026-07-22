@@ -1,0 +1,31 @@
+# Built binary
+/yabinui
+
+# Go artifacts
+*.test
+*.out
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+vendor/
+go.work
+go.work.sum
+
+# Claude Code session state
+.claude/
+
+# Editor / IDE state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local config overrides — real config lives in ~/.config/yabinui/
+config.local.toml

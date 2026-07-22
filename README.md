@@ -78,6 +78,8 @@ yabin ALL=(root) NOPASSWD: /usr/bin/openvpn --config /etc/openvpn/client/driveli
 yabin ALL=(root) NOPASSWD: /usr/bin/killall openvpn
 yabin ALL=(root) NOPASSWD: /usr/bin/mount -t cifs //*.drivelinebaseball.com/* /home/yabin/* -o credentials=/home/yabin/.smbcreds\,uid=1000\,gid=1000
 yabin ALL=(root) NOPASSWD: /usr/bin/umount /home/yabin/*
+yabin ALL=(root) NOPASSWD: /usr/bin/umount -f /home/yabin/*
+yabin ALL=(root) NOPASSWD: /usr/bin/umount -l /home/yabin/*
 yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick up *
 yabin ALL=(root) NOPASSWD: /usr/bin/wg-quick down *
 ```
@@ -95,12 +97,27 @@ sudo chmod 0440 /etc/sudoers.d/yabinui
 ```
 
 Notes:
+- sudoers matches arguments positionally, so each flag form of `umount` needs
+  its own rule — `umount /home/yabin/*` does not authorize `umount -f ...`.
 - The command paths must match exactly what the TUI invokes. If `which openvpn`
   or `which killall` returns something other than `/usr/bin/...`, edit the file
   before installing.
 - If you change `ConfigPath` in `internal/vpn/openvpn.go`, update the rule too —
   sudoers matches the full argument list.
 - To remove: `sudo rm /etc/sudoers.d/yabinui`.
+
+## Unmounting a busy share
+
+Leaving a share open in a file manager makes `umount` fail with "target is
+busy" — a file manager pins the mount just by displaying it, usually through an
+inotify watch rather than an open file. When that happens the TUI finds the
+processes holding the mount (by reading `/proc`, never by walking the share
+itself, which would hang on a slow one), terminates the file managers and
+desktop indexers among them, and retries.
+
+Anything that could be holding real work — a shell, an editor, a running copy —
+is never killed. Those are listed by name and PID in the error message so you
+can close them yourself.
 
 ## Configuration
 
